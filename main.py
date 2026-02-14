@@ -179,6 +179,29 @@ async def shutdown_event():
 # Endpoints
 # ======================
 
+@app.get("/", response_model=dict, tags=["Root"])
+def root():
+    """
+    Root endpoint - API welcome page.
+    
+    Provides API information and links to documentation.
+    """
+    return {
+        "api": "Truth or Dare API",
+        "version": "1.0.0",
+        "description": "Random truth or dare prompts API",
+        "documentation": "/docs",
+        "health_check": "/health",
+        "available_endpoints": {
+            "random_prompt": "/random?type=truth&category=default",
+            "categories": "/categories",
+            "statistics": "/stats",
+            "reload_data": "/reload"
+        },
+        "author": "Zafar Iqbal (zfrqbl)"
+    }
+
+
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
 def health_check():
     """
