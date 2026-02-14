@@ -7,7 +7,7 @@ from config.models import Settings
 
 def load_truths(settings: Settings) -> List[Truth]:
     """Load truths from JSON file and validate."""
-    path = Path(settings.truths.source_file)
+    path = Path(__file__).parent.parent / settings.truths.source_file
     with open(path, 'r') as file:
         data = json.load(file)
     truths = [Truth(**t) for t in data['truths']]
