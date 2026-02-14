@@ -1,0 +1,94 @@
+app:
+  name: "UnspokenTruth API"
+  environment: "development"
+  timezone_mode: "utc"
+
+api:
+  endpoints:
+    truth: "/truth"
+    health: "/health"
+  content_negotiation:
+    plain_text_accept: "text/plain"
+
+truths:
+  source_file: "truths.json"
+  validation:
+    min_count: 10
+    allowed_weights: ["high", "medium", "low"]
+    normalize_truths: true
+  normalization:
+    case: "lower"
+
+selection:
+  random_mode: "weighted"
+  weight_levels:
+    high: 1
+    medium: 2
+    low: 3
+  day_weight_table:
+    Monday:
+      high: 0.6
+      medium: 0.3
+      low: 0.1
+    Tuesday:
+      high: 0.5
+      medium: 0.4
+      low: 0.1
+    Wednesday:
+      high: 0.4
+      medium: 0.4
+      low: 0.2
+    Thursday:
+      high: 0.3
+      medium: 0.4
+      low: 0.3
+    Friday:
+      high: 0.2
+      medium: 0.3
+      low: 0.5
+    Saturday:
+      high: 0.4
+      medium: 0.4
+      low: 0.2
+    Sunday:
+      high: 0.4
+      medium: 0.4
+      low: 0.2
+
+rate_limit:
+  requests_per_period: 40
+  period_seconds: 3600
+  key_strategy: "remote_address"
+  exempt_routes: ["/health"]
+
+headers:
+  cache_control: "no-store"
+  vary: "Accept"
+  security:
+    x_content_type_options: "nosniff"
+    x_frame_options: "DENY"
+
+errors:
+  field_names:
+    error: "error"
+    message: "message"
+    request_id: "request_id"
+    retry_after_seconds: "retry_after_seconds"
+  status_mappings:
+    rate_limited: 429
+    not_found: 404
+    not_acceptable: 406
+    internal: 500
+    unavailable: 503
+
+observability:
+  logging:
+    level: "INFO"
+    format: "json"
+    fields:
+      - "request_id"
+      - "endpoint"
+      - "status"
+      - "latency"
+      - "truth_id"
+      - "day"
