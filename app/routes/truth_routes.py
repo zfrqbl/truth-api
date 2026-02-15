@@ -14,6 +14,9 @@ limiter = Limiter(key_func=get_remote_address)
 @limiter.limit(f"{settings.rate_limit.max_requests}/hour")
 async def get_random_truth(request: Request):
     """Return a random truth from the collection with a shareable link"""
+    # Increment hit counter for each truth request
+    request.app.state.hit_counter += 1
+    
     try:
         truths = request.app.state.truths
         if not truths:
@@ -276,6 +279,9 @@ async def get_random_truth(request: Request):
 @limiter.limit(f"{settings.rate_limit.max_requests}/hour")
 async def get_truth_by_id(request: Request, truth_id: str):
     """Return a specific truth by ID with a shareable link"""
+    # Increment hit counter for each truth request
+    request.app.state.hit_counter += 1
+    
     try:
         truths = request.app.state.truths
         if not truths:
