@@ -20,6 +20,7 @@ limiter = Limiter(key_func=get_remote_address)
 async def lifespan(app: FastAPI):
     # Startup
     app.state.truths = load_truths()
+    app.state.hit_counter = 0  # Initialize hit counter
     yield
     # Shutdown
 
@@ -63,6 +64,9 @@ def create_app():
     @app.get(settings.api.endpoints.root, response_class=HTMLResponse)
     async def root(request: Request):
         """Root endpoint with API documentation"""
+        # Increment hit counter
+        app.state.hit_counter += 1
+        
         html_content = f"""
         <!DOCTYPE html>
         <html>
@@ -102,8 +106,18 @@ def create_app():
                 }}
                 h1 {{
                     color: #2c3e50;
-                    margin: 0 0 20px 0;
+                    margin: 0 0 10px 0;
                     font-size: 32px;
+                }}
+                .counter {{
+                    background: #e9ecef;
+                    color: #6c757d;
+                    display: inline-block;
+                    padding: 8px 16px;
+                    border-radius: 20px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    margin: 0 0 20px 0;
                 }}
                 p {{
                     color: #7f8c8d;
@@ -181,6 +195,7 @@ def create_app():
         <body>
             <div class="container">
                 <h1>{settings.app.title}</h1>
+                <div class="counter">API Hits: {app.state.hit_counter:,}</div>
                 <p>{settings.app.description}</p>
                 
                 <div class="section">
@@ -230,7 +245,8 @@ def create_app():
         return {
             "status": "healthy",
             "version": settings.app.version,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
+            "hit_counter": app.state.hit_counter
         }
 
     return app
