@@ -96,7 +96,7 @@ def create_app():
             <p>This API enforces a rate limit of {settings.rate_limit.max_requests} requests per hour per IP address.</p>
             
             <h2>Examples:</h2>
-            <pre>curl -X GET https://your-railway-app.railway.app{settings.api.endpoints.truth}</pre>
+            <pre>curl -X GET https://truth-api-production.up.railway.app{settings.api.endpoints.truth}</pre>
         </body>
         </html>
         """
