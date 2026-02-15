@@ -1,6 +1,6 @@
 """
-Truth or Dare API
-FastAPI backend for serving truth/dare prompts from JSON data files.
+Truth API
+Simple, secure API for random truth prompts.
 """
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 # ======================
@@ -20,6 +20,7 @@ from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR / "data"
+STATIC_DIR = BASE_DIR / "static"
 
 # Set up logging
 logging.basicConfig(
@@ -35,7 +36,6 @@ logger = logging.getLogger("truth-api")
 class PromptType(str, Enum):
     """Valid prompt types for filtering."""
     truth = "truth"
-    dare = "dare"
 
 
 class PromptResponse(BaseModel):
@@ -50,6 +50,43 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     data_loaded: bool
+
+
+# ======================
+# HTML Content Cache
+# ======================
+
+ROOT_HTML_CONTENT: Optional[str] = None
+
+
+def load_root_html() -> str:
+    """Load root HTML page content from static/index.html"""
+    html_path = STATIC_DIR / "index.html"
+    
+    if not html_path.exists():
+        logger.warning(f"Root HTML page not found at {html_path}. Using fallback content.")
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head><title>Truth API</title></head>
+        <body>
+            <h1>Truth API</h1>
+            <p>Simple API for random truth prompts</p>
+            <p><a href="/docs">API Documentation</a></p>
+            <p><a href="/health">Health Check</a></p>
+            <p><a href="/random">Get Random Truth</a></p>
+        </body>
+        </html>
+        """
+    
+    try:
+        with open(html_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        logger.info(f"Loaded root HTML page from {html_path}")
+        return content
+    except Exception as e:
+        logger.error(f"Failed to load root HTML page: {e}")
+        return f"<h1>Truth API</h1><p>Error loading page: {e}</p>"
 
 
 # ======================
@@ -112,14 +149,12 @@ def load_data_files() -> Dict[str, Dict[str, List[str]]]:
                 logger.error(f"Invalid data structure in {json_file}")
                 continue
             
-            # Ensure both 'truth' and 'dare' keys exist
+            # Ensure 'truth' key exists (this is Truth API, not Truth or Dare)
             if "truth" not in data:
                 data["truth"] = []
-            if "dare" not in data:
-                data["dare"] = []
             
             cache[category] = data
-            logger.info(f"Loaded category: {category} ({len(data['truth'])} truths, {len(data['dare'])} dares)")
+            logger.info(f"Loaded category: {category} ({len(data['truth'])} truths)")
         
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse {json_file}: {e}")
@@ -134,8 +169,9 @@ def load_data_files() -> Dict[str, Dict[str, List[str]]]:
 
 def reload_data() -> None:
     """Reload data from files into cache."""
-    global DATA_CACHE
+    global DATA_CACHE, ROOT_HTML_CONTENT
     DATA_CACHE = load_data_files()
+    ROOT_HTML_CONTENT = load_root_html()
     logger.info(f"Data reloaded. Categories: {list(DATA_CACHE.keys())}")
 
 
@@ -144,8 +180,8 @@ def reload_data() -> None:
 # ======================
 
 app = FastAPI(
-    title="Truth or Dare API",
-    description="API for serving random truth or dare prompts",
+    title="Truth API",
+    description="Simple, secure API for random truth prompts",
     version="1.0.0",
     contact={
         "name": "Zafar Iqbal",
@@ -159,12 +195,12 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup_event():
-    """Load data into memory on application startup."""
-    logger.info("Starting Truth or Dare API...")
+    """Load data and HTML content into memory on application startup."""
+    logger.info("Starting Truth API...")
     reload_data()
     
     if not DATA_CACHE:
-        logger.warning("No data loaded. Application will return 404 for all requests.")
+        logger.warning("No data loaded. Application will return 404 for prompt requests.")
     else:
         logger.info(f"Application started with {len(DATA_CACHE)} categories")
 
@@ -172,34 +208,22 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
-    logger.info("Shutting down Truth or Dare API...")
+    logger.info("Shutting down Truth API...")
 
 
 # ======================
 # Endpoints
 # ======================
 
-@app.get("/", response_model=dict, tags=["Root"])
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
 def root():
     """
-    Root endpoint - API welcome page.
-    
-    Provides API information and links to documentation.
+    Root endpoint - Beautiful HTML landing page.
     """
-    return {
-        "api": "Truth or Dare API",
-        "version": "1.0.0",
-        "description": "Random truth or dare prompts API",
-        "documentation": "/docs",
-        "health_check": "/health",
-        "available_endpoints": {
-            "random_prompt": "/random?type=truth&category=default",
-            "categories": "/categories",
-            "statistics": "/stats",
-            "reload_data": "/reload"
-        },
-        "author": "Zafar Iqbal (zfrqbl)"
-    }
+    global ROOT_HTML_CONTENT
+    if ROOT_HTML_CONTENT is None:
+        ROOT_HTML_CONTENT = load_root_html()
+    return ROOT_HTML_CONTENT
 
 
 @app.get("/health", response_model=HealthResponse, tags=["Health"])
@@ -231,45 +255,39 @@ def get_stats():
     """
     Get statistics about loaded data.
     
-    Returns count of truths and dares per category.
+    Returns count of truths per category.
     """
     stats = {}
     for category, data in DATA_CACHE.items():
         stats[category] = {
             "truth_count": len(data.get("truth", [])),
-            "dare_count": len(data.get("dare", [])),
-            "total_count": len(data.get("truth", [])) + len(data.get("dare", []))
+            "total_count": len(data.get("truth", []))
         }
     return stats
 
 
 @app.get("/random", response_model=PromptResponse, tags=["Prompts"])
 def get_random(
-    type: Optional[PromptType] = Query(
-        None,
-        description="Filter by prompt type: 'truth' or 'dare'"
-    ),
     category: str = Query(
         "default",
         description="Category name (e.g., 'default', 'spicy', 'family')"
     )
 ):
     """
-    Get a random truth or dare prompt.
+    Get a random truth prompt.
     
     Args:
-        type: Optional filter for 'truth' or 'dare'
         category: Category name (default: 'default')
         
     Returns:
-        Random prompt with type, text, and category
+        Random truth prompt with type, text, and category
         
     Raises:
         HTTPException: 400 for invalid category, 404 for no data
     """
     # Validate and sanitize category
     try:
-        category_path = safe_category_path(category)
+        safe_category_path(category)
     except ValueError as e:
         logger.warning(f"Invalid category request: {category} - {e}")
         raise HTTPException(
@@ -286,41 +304,18 @@ def get_random(
         )
     
     data = DATA_CACHE[category]
+    prompts = data.get("truth", [])
     
-    # Get prompts based on type filter
-    if type:
-        prompts = data.get(type.value, [])
-        prompt_type = type.value
-    else:
-        # Combine both types and pick randomly
-        all_prompts = []
-        all_prompts.extend([("truth", t) for t in data.get("truth", [])])
-        all_prompts.extend([("dare", d) for d in data.get("dare", [])])
-        
-        if not all_prompts:
-            logger.warning(f"No prompts available in category: {category}")
-            raise HTTPException(
-                status_code=404,
-                detail=f"No prompts available in category '{category}'"
-            )
-        
-        prompt_type, prompt_text = random.choice(all_prompts)
-        return {
-            "type": prompt_type,
-            "text": prompt_text,
-            "category": category
-        }
-    
-    # Return random prompt of specified type
+    # Return random prompt
     if not prompts:
-        logger.warning(f"No {type.value}s available in category: {category}")
+        logger.warning(f"No truths available in category: {category}")
         raise HTTPException(
             status_code=404,
-            detail=f"No {type.value}s available in category '{category}'"
+            detail=f"No truths available in category '{category}'"
         )
     
     return {
-        "type": prompt_type,
+        "type": "truth",
         "text": random.choice(prompts),
         "category": category
     }
