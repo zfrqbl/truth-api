@@ -59,6 +59,7 @@ def create_app():
 
     # Include routers
     app.include_router(truth_router, prefix="")
+    
 
     @app.get(settings.api.endpoints.root, response_class=HTMLResponse)
     async def root(request: Request):
