@@ -1,0 +1,31 @@
+app:
+  title: "Truth API"
+  description: "A simple API that serves truths about programming and life"
+  version: "1.0.0"
+  host: "0.0.0.0"
+  port: 8000
+
+api:
+  endpoints:
+    root: "/"
+    truth: "/truth"
+    health: "/health"
+
+files:
+  truth_file_path: "./data/truth.json"
+
+rate_limit:
+  max_requests: 20
+  window_seconds: 3600  # 1 hour
+
+cors:
+  allow_origins:
+    - "*"
+  allow_credentials: true
+  allow_methods:
+    - "*"
+  allow_headers:
+    - "*"
+
+logging:
+  level: "INFO"
