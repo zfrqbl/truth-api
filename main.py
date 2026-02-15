@@ -50,6 +50,8 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     data_loaded: bool
+    categories: List[str] = []
+    data_sources: List[str] = []
 
 
 # ======================
@@ -126,53 +128,145 @@ def safe_category_path(category: str) -> Path:
 
 def load_data_files() -> Dict[str, Dict[str, List[str]]]:
     """
-    Load all JSON data files from the data directory into memory.
+    Load all JSON data files from multiple sources:
+    1. /app/data/*.json (category files)
+    2. /app/truth.json (main truth file)
     
     Returns:
         Dictionary mapping category names to their data
     """
     cache: Dict[str, Dict[str, List[str]]] = {}
+    data_sources: List[str] = []
     
-    if not DATA_DIR.exists():
-        logger.error(f"Data directory not found: {DATA_DIR}")
-        return cache
+    logger.info("=" * 60)
+    logger.info("DATA LOADING STARTED")
+    logger.info("=" * 60)
+    logger.info(f"Base directory: {BASE_DIR.absolute()}")
+    logger.info(f"Looking for data in: {DATA_DIR.absolute()}")
+    logger.info(f"Current working directory: {Path.cwd()}")
+    logger.info("-" * 60)
     
-    for json_file in DATA_DIR.glob("*.json"):
-        category = json_file.stem
+    # ============================================
+    # METHOD 1: Load from /app/data/*.json
+    # ============================================
+    logger.info("\n[METHOD 1] Checking /app/data/ directory...")
+    
+    if DATA_DIR.exists():
+        logger.info(f"✓ Data directory found: {DATA_DIR}")
+        logger.info(f"  Contents: {[f.name for f in DATA_DIR.glob('*')]}")
         
+        json_files = list(DATA_DIR.glob("*.json"))
+        logger.info(f"  Found {len(json_files)} JSON files")
+        
+        for json_file in json_files:
+            category = json_file.stem
+            try:
+                logger.info(f"  → Loading {json_file.name}...")
+                with open(json_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                if not isinstance(data, dict):
+                    logger.error(f"    ✗ Invalid structure in {json_file}")
+                    continue
+                
+                if "truth" not in 
+                    logger.warning(f"    ⚠ 'truth' key not found in {json_file}")
+                    data["truth"] = []
+                
+                cache[category] = data
+                data_sources.append(str(json_file.absolute()))
+                logger.info(f"    ✓ Loaded '{category}' with {len(data['truth'])} truths")
+            
+            except json.JSONDecodeError as e:
+                logger.error(f"    ✗ JSON parse error in {json_file}: {e}")
+            except Exception as e:
+                logger.error(f"    ✗ Error loading {json_file}: {e}", exc_info=True)
+    else:
+        logger.info(f"  ✗ Data directory NOT found: {DATA_DIR}")
+    
+    # ============================================
+    # METHOD 2: Load /app/truth.json (ROOT LEVEL)
+    # ============================================
+    logger.info("\n[METHOD 2] Checking for /app/truth.json...")
+    
+    truth_json_path = BASE_DIR / "truth.json"
+    logger.info(f"  Looking for: {truth_json_path.absolute()}")
+    
+    if truth_json_path.exists():
+        logger.info(f"  ✓ Found truth.json at: {truth_json_path.absolute()}")
         try:
-            with open(json_file, "r", encoding="utf-8") as f:
+            with open(truth_json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             
-            # Validate data structure
-            if not isinstance(data, dict):
-                logger.error(f"Invalid data structure in {json_file}")
-                continue
+            # Handle different JSON structures
+            if isinstance(data, dict) and "truth" in data:
+                # Structure: {"truth": [...]}
+                logger.info(f"    ✓ Valid structure with 'truth' key")
+                cache["default"] = data
+                data_sources.append(str(truth_json_path.absolute()))
+                logger.info(f"    ✓ Loaded 'default' category with {len(data['truth'])} truths")
             
-            # Ensure 'truth' key exists (this is Truth API, not Truth or Dare)
-            if "truth" not in data:
-                data["truth"] = []
+            elif isinstance(data, list):
+                # Structure: [...]
+                logger.info(f"    ✓ Valid structure: array of truths")
+                cache["default"] = {"truth": data}
+                data_sources.append(str(truth_json_path.absolute()))
+                logger.info(f"    ✓ Loaded 'default' category with {len(data)} truths")
             
-            cache[category] = data
-            logger.info(f"Loaded category: {category} ({len(data['truth'])} truths)")
+            elif isinstance(data, dict):
+                # Generic dict, use all keys
+                logger.info(f"    ✓ Generic dict structure")
+                cache["default"] = data
+                data_sources.append(str(truth_json_path.absolute()))
+                truth_count = len(data.get("truth", []))
+                logger.info(f"    ✓ Loaded 'default' category with {truth_count} truths")
+            
+            else:
+                logger.error(f"    ✗ Unsupported structure in truth.json")
         
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse {json_file}: {e}")
+            logger.error(f"    ✗ JSON parse error: {e}")
         except Exception as e:
-            logger.error(f"Error loading {json_file}: {e}")
+            logger.error(f"    ✗ Error loading truth.json: {e}", exc_info=True)
+    else:
+        logger.info(f"  ✗ truth.json NOT found at: {truth_json_path.absolute()}")
     
-    if not cache:
-        logger.warning("No data files loaded!")
+    # ============================================
+    # SUMMARY
+    # ============================================
+    logger.info("\n" + "=" * 60)
+    logger.info("DATA LOADING SUMMARY")
+    logger.info("=" * 60)
     
-    return cache
+    if cache:
+        logger.info(f"✓ SUCCESS: Loaded {len(cache)} categories")
+        for category, data in cache.items():
+            count = len(data.get("truth", []))
+            logger.info(f"  - '{category}': {count} truths")
+        logger.info(f"\nData sources:")
+        for source in data_sources:
+            logger.info(f"  - {source}")
+    else:
+        logger.error("✗ FAILED: No data loaded!")
+        logger.error(f"\nTroubleshooting:")
+        logger.error(f"  1. Check if /app/data/ directory exists")
+        logger.error(f"  2. Check if /app/truth.json exists")
+        logger.error(f"  3. Verify JSON files are valid")
+        logger.error(f"  4. Check file permissions")
+    
+    logger.info("=" * 60 + "\n")
+    
+    return cache, data_sources
 
 
-def reload_data() -> None:
-    """Reload data from files into cache."""
+def reload_data() -> tuple:
+    """Reload data from files into cache. Returns (cache, sources)"""
     global DATA_CACHE, ROOT_HTML_CONTENT
-    DATA_CACHE = load_data_files()
+    logger.info("🔄 Reloading data...")
+    DATA_CACHE, data_sources = load_data_files()
     ROOT_HTML_CONTENT = load_root_html()
-    logger.info(f"Data reloaded. Categories: {list(DATA_CACHE.keys())}")
+    logger.info(f"✓ Data reloaded. Categories: {list(DATA_CACHE.keys())}")
+    return DATA_CACHE, data_sources
 
 
 # ======================
@@ -192,23 +286,27 @@ app = FastAPI(
     },
 )
 
+# Store data sources for health check
+DATA_SOURCES: List[str] = []
+
 
 @app.on_event("startup")
 async def startup_event():
     """Load data and HTML content into memory on application startup."""
-    logger.info("Starting Truth API...")
-    reload_data()
+    logger.info("\n🚀 Starting Truth API...")
+    global DATA_SOURCES
+    DATA_CACHE, DATA_SOURCES = reload_data()
     
     if not DATA_CACHE:
-        logger.warning("No data loaded. Application will return 404 for prompt requests.")
+        logger.warning("⚠️  No data loaded. Application will return 404 for prompt requests.")
     else:
-        logger.info(f"Application started with {len(DATA_CACHE)} categories")
+        logger.info(f"✅ Application started with {len(DATA_CACHE)} categories: {list(DATA_CACHE.keys())}")
 
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown."""
-    logger.info("Shutting down Truth API...")
+    logger.info("🛑 Shutting down Truth API...")
 
 
 # ======================
@@ -231,12 +329,14 @@ def health_check():
     """
     Health check endpoint.
     
-    Returns status information about the API.
+    Returns status information about the API and data loading.
     """
     return {
         "status": "healthy",
         "version": "1.0.0",
-        "data_loaded": len(DATA_CACHE) > 0
+        "data_loaded": len(DATA_CACHE) > 0,
+        "categories": list(DATA_CACHE.keys()),
+        "data_sources": DATA_SOURCES
     }
 
 
@@ -298,10 +398,17 @@ def get_random(
     # Check if category exists in cache
     if category not in DATA_CACHE:
         logger.warning(f"Category not found: {category}")
-        raise HTTPException(
-            status_code=404,
-            detail=f"Category '{category}' not found. Available categories: {list(DATA_CACHE.keys())}"
-        )
+        available = list(DATA_CACHE.keys())
+        if available:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Category '{category}' not found. Available categories: {available}"
+            )
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Category '{category}' not found. No data loaded."
+            )
     
     data = DATA_CACHE[category]
     prompts = data.get("truth", [])
@@ -328,10 +435,12 @@ def reload_endpoint():
     
     WARNING: This endpoint should be protected in production!
     """
-    reload_data()
+    global DATA_SOURCES
+    DATA_CACHE, DATA_SOURCES = reload_data()
     return {
         "message": "Data reloaded successfully",
-        "categories": list(DATA_CACHE.keys())
+        "categories": list(DATA_CACHE.keys()),
+        "data_sources": DATA_SOURCES
     }
 
 
